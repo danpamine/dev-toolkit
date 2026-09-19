@@ -1,0 +1,7 @@
+# pnpm-workspace.yaml - dev-toolkit Angular (global para todos os projetos)
+# Aprova builds de pacotes nativos necessários para Angular CLI
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
+  lmdb: true
+  msgpackr-extract: true

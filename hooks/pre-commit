@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# pre-commit - Entrypoint unificado acionado pelo Git
+# ==============================================================================
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [[ -f "pom.xml" ]]; then
+    exec "$SCRIPT_DIR/java/pre-commit"
+elif [[ -f "angular.json" ]]; then
+    exec "$SCRIPT_DIR/angular/pre-commit"
+else
+    exit 0
+fi

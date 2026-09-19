@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# post-merge - Hook acionado após git pull
+# ==============================================================================
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOOLKIT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+source "$TOOLKIT_ROOT/lib/common/logging.sh"
+source "$TOOLKIT_ROOT/lib/common/bootstrap.sh"
+source "$TOOLKIT_ROOT/lib/common/gitleaks.sh"
+
+LOCAL_BIN="$HOME/.local/bin"
+export PATH="$LOCAL_BIN:$PATH"
+
+step_gitleaks_full
+exit $?

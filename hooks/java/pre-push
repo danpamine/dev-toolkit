@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# pre-push (Java) - Orquestrador com DAG e Execução Assíncrona
+# ==============================================================================
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOOLKIT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+source "$TOOLKIT_ROOT/lib/common/env.sh"
+source "$TOOLKIT_ROOT/lib/common/logging.sh"
+source "$TOOLKIT_ROOT/lib/common/cache.sh"
+source "$TOOLKIT_ROOT/lib/common/bootstrap.sh"
+source "$TOOLKIT_ROOT/lib/common/updater.sh"
+source "$TOOLKIT_ROOT/lib/common/summary.sh"
+source "$TOOLKIT_ROOT/lib/common/engine.sh"
+source "$TOOLKIT_ROOT/lib/common/commands.sh"
+
+source "$TOOLKIT_ROOT/lib/java/version-check.sh"
+source "$TOOLKIT_ROOT/lib/common/sca-trivy.sh"
+source "$TOOLKIT_ROOT/lib/common/osv-scanner.sh"
+source "$TOOLKIT_ROOT/lib/java/pmd.sh"
+source "$TOOLKIT_ROOT/lib/java/spotbugs.sh"
+source "$TOOLKIT_ROOT/lib/java/openapi-validate.sh"
+source "$TOOLKIT_ROOT/lib/java/maven-verify.sh"
+source "$TOOLKIT_ROOT/lib/common/semgrep.sh"
+
+[[ ! -f "pom.xml" ]] && exit 0
+
+REPO_NAME="$(basename "$(pwd)")"
+LOCAL_BIN="$HOME/.local/bin"
+export PATH="$LOCAL_BIN:$PATH"
+
+toolkit_auto_update
+env_load
+log_init "$REPO_NAME" "pre-push"
+cache_init "$REPO_NAME"
+bootstrap_all
+
+engine_reset
+engine_register "version" "Validando incremento de versão no pom.xml" step_version_check "FEATURE_VERSION_CHECK"
+engine_register "sca" "Analisando vulnerabilidades (Trivy SCA)" step_sca_universal "FEATURE_SCA"
+engine_register "osv" "Analisando vulnerabilidades (OSV-Scanner)" step_osv_scanner "FEATURE_OSV"
+engine_register "pmd" "Análise estática de qualidade (PMD)" step_pmd "FEATURE_PMD"
+engine_register "openapi" "Validando contratos de API (OpenAPI)" step_openapi_validate "FEATURE_OPENAPI"
+engine_register "spotbugs" "Análise SAST SpotBugs + FindSecBugs" step_spotbugs "FEATURE_SPOTBUGS"
+engine_register "verify" "Compilação, Testes e JaCoCo (Maven)" step_maven_verify "FEATURE_MAVEN_VERIFY" "spotbugs"
+engine_register "semgrep" "Análise SAST semântica (Semgrep)" step_semgrep_sast "FEATURE_SEMGREP"
+
+engine_run "PRE-PUSH JAVA"
+
+summary_print "RESUMO DA VALIDAÇÃO PRE-PUSH" "Pronto para abertura de PR!" "O projeto NÃO atende aos critérios para push."
+summary_has_failures && exit 1
+exit 0

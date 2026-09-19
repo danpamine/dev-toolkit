@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# pre-commit (Angular) - Orquestrador com DAG e Execução Assíncrona
+# ==============================================================================
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOOLKIT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+source "$TOOLKIT_ROOT/lib/common/env.sh"
+source "$TOOLKIT_ROOT/lib/common/logging.sh"
+source "$TOOLKIT_ROOT/lib/common/cache.sh"
+source "$TOOLKIT_ROOT/lib/common/bootstrap.sh"
+source "$TOOLKIT_ROOT/lib/common/updater.sh"
+source "$TOOLKIT_ROOT/lib/common/summary.sh"
+source "$TOOLKIT_ROOT/lib/common/engine.sh"
+source "$TOOLKIT_ROOT/lib/common/commands.sh"
+source "$TOOLKIT_ROOT/lib/angular/bootstrap.sh"
+
+source "$TOOLKIT_ROOT/lib/common/gitleaks.sh"
+source "$TOOLKIT_ROOT/lib/angular/prettier.sh"
+source "$TOOLKIT_ROOT/lib/angular/lockfile-sync.sh"
+source "$TOOLKIT_ROOT/lib/angular/eslint.sh"
+source "$TOOLKIT_ROOT/lib/common/ast-grep.sh"
+
+[[ ! -f "angular.json" ]] && exit 0
+
+REPO_NAME="$(basename "$(pwd)")"
+LOCAL_BIN="$HOME/.local/bin"
+export PATH="$LOCAL_BIN:$PATH"
+
+toolkit_auto_update
+env_load
+log_init "$REPO_NAME" "pre-commit"
+cache_init "$REPO_NAME"
+bootstrap_all
+bootstrap_angular
+
+engine_reset
+engine_register "gitleaks" "Checando segredos no código (Gitleaks)" step_gitleaks_commit "FEATURE_GITLEAKS"
+engine_register "prettier" "Formatando arquivos alterados (Prettier)" step_angular_prettier "FEATURE_PRETTIER"
+engine_register "lockfile" "Sincronizando package-lock.json" step_lockfile_sync "FEATURE_LOCKFILE"
+engine_register "eslint" "Verificando regras de lint (ESLint)" step_angular_eslint "FEATURE_ESLINT"
+engine_register "ast-grep" "Linter estrutural de AST (ast-grep)" step_ast_grep "FEATURE_AST_GREP"
+
+engine_run "PRE-COMMIT ANGULAR"
+
+summary_print "RESUMO DA VALIDAÇÃO PRE-COMMIT" "Commit aprovado!" "Corrija os erros apontados antes de commitar."
+summary_has_failures && exit 1
+exit 0

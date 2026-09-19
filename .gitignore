@@ -1,0 +1,5 @@
+dependencies/*
+logs/*
+.env
+.env.local
+*.local.env
