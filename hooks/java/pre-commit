@@ -5,6 +5,8 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOOLKIT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+export _CURRENT_HOOK_ACTION="pre-commit"
+
 source "$TOOLKIT_ROOT/lib/common/env.sh"
 source "$TOOLKIT_ROOT/lib/common/logging.sh"
 source "$TOOLKIT_ROOT/lib/common/cache.sh"
@@ -38,7 +40,7 @@ engine_register "checkstyle" "Verificando regras de estilo (Checkstyle)" step_ch
 engine_register "ast-grep" "Linter estrutural de AST (ast-grep)" step_ast_grep "FEATURE_AST_GREP"
 
 engine_run "PRE-COMMIT JAVA"
-
 summary_print "RESUMO DA VALIDAÇÃO PRE-COMMIT" "Commit aprovado!" "Corrija os desvios antes de commitar."
+
 summary_has_failures && exit 1
 exit 0

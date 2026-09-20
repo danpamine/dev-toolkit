@@ -5,12 +5,26 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOOLKIT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+source "$TOOLKIT_ROOT/lib/common/env.sh"
 source "$TOOLKIT_ROOT/lib/common/logging.sh"
+source "$TOOLKIT_ROOT/lib/common/cache.sh"
 source "$TOOLKIT_ROOT/lib/common/bootstrap.sh"
+source "$TOOLKIT_ROOT/lib/common/summary.sh"
+source "$TOOLKIT_ROOT/lib/common/engine.sh"
 source "$TOOLKIT_ROOT/lib/common/gitleaks.sh"
 
 LOCAL_BIN="$HOME/.local/bin"
 export PATH="$LOCAL_BIN:$PATH"
 
-step_gitleaks_full
-exit $?
+REPO_NAME="$(basename "$(pwd)")"
+log_init "$REPO_NAME" "post-merge (git pull)"
+cache_init "$REPO_NAME"
+
+engine_reset
+engine_register "gitleaks-pull" "Varredura integral de segredos (Gitleaks)" step_gitleaks_full "FEATURE_GITLEAKS_PULL"
+engine_run "POST-MERGE (GIT PULL)"
+summary_print "RESUMO DO POST-MERGE" "Nenhum segredo detectado pós-pull." "Segredos detectados nas alterações recebidas!"
+engine_print_failures
+
+summary_has_failures && exit 1
+exit 0
