@@ -137,11 +137,15 @@ _bootstrap_resolve_latest_python_stable() {
     local live_url
     live_url="$(curl -sL --ssl-no-revoke --connect-timeout 4 --max-time 8 "https://www.python.org/downloads/windows/" 2>/dev/null | grep -oE 'https://www.python.org/ftp/python/3\.[0-9]+\.[0-9]+/python-[0-9\.]+-embed-amd64\.zip' | head -1)"
 
-    if [[ -n "$live_url" ]]; then
-        echo "$live_url"
-    else
-        echo "https://www.python.org/ftp/python/3.13.2/python-3.13.2-embed-amd64.zip"
+    if [[ -z "$live_url" ]]; then
+        local latest_ver
+        latest_ver="$(curl -sL --ssl-no-revoke --connect-timeout 4 --max-time 8 "https://www.python.org/ftp/python/" 2>/dev/null | grep -oE 'href="3\.[0-9]+\.[0-9]+/' | sed 's#href="##;s#/##' | sort -V | tail -1)"
+        if [[ -n "$latest_ver" ]]; then
+            live_url="https://www.python.org/ftp/python/${latest_ver}/python-${latest_ver}-embed-amd64.zip"
+        fi
     fi
+
+    echo "$live_url"
 }
 
 bootstrap_python_portable() {
