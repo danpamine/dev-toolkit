@@ -30,7 +30,7 @@ setup() {
     rm -rf "$SANDBOX"
     mkdir -p "$SANDBOX"
     cd "$SANDBOX" || exit 1
-    git init --quiet
+    git init --quiet -b main
     git config user.name "Toolkit Tester"
     git config user.email "tester@toolkit.corp"
 }
@@ -40,7 +40,6 @@ teardown() {
     rm -rf "$SANDBOX"
 }
 
-# 1. Teste de Cache TTL (3h = 10800s)
 test_cache_ttl() {
     printf "\n--- Teste 1: Validação do Cache e TTL de 3 horas ---\n"
     source "$TOOLKIT_ROOT/lib/common/cache.sh"
@@ -58,7 +57,6 @@ test_cache_ttl() {
     assert "1" "$(cache_is_valid "scope_a" "$h" 10800; echo $?)" "Cache expirado após 3h deve retornar 1"
 }
 
-# 2. Teste de Feature Toggle e Reenumeração
 test_toggles() {
     printf "\n--- Teste 2: Feature Toggles e Reenumeração Dinâmica ---\n"
     source "$TOOLKIT_ROOT/lib/common/logging.sh"
@@ -77,25 +75,54 @@ test_toggles() {
     assert "1" "$(engine_is_enabled "FEATURE_TEST_TWO"; echo $?)" "Toggle Inativo deve retornar 1"
 }
 
-# 3. Teste Angular Test via package.json
 test_angular_test_resolution() {
-    printf "\n--- Teste 3: Resolução de Teste Angular via package.json ---\n"
+    printf "\n--- Teste 3: Resolução de Teste Angular & Java (Sem arquivos de teste) ---\n"
     source "$TOOLKIT_ROOT/lib/common/commands.sh"
 
-    # Caso A: Sem script de teste
     echo '{"name": "mock-app"}' > package.json
     run_angular_test
-    assert "0" "$?" "Deve finalizar com sucesso/ignorado se não houver script de teste"
+    assert "0" "$?" "Deve finalizar com sucesso se não houver script no package.json"
 
-    # Caso B: Script padrão de erro do npm
-    echo '{"name": "mock-app", "scripts": {"test": "echo \"Error: no test specified\" && exit 1"}}' > package.json
+    echo '{"name": "mock-app", "scripts": {"test": "exit 1"}}' > package.json
+    mkdir -p src
     run_angular_test
-    assert "0" "$?" "Deve ignorar script padrão 'no test specified' sem quebrar o hook"
+    assert "0" "$?" "Deve finalizar com sucesso se script existir mas não houver arquivos físicos"
+
+    run_java_verify
+    assert "0" "$?" "Deve finalizar com sucesso em Java se não houver arquivos em src/test/java"
 }
 
-# 4. Teste de Concorrência Assíncrona com Múltiplas Falhas
+test_version_increments() {
+    printf "\n--- Teste 4: Validação de Incremento Estrito vs. Branch Base Remota ---\n"
+    source "$TOOLKIT_ROOT/lib/common/logging.sh"
+    source "$TOOLKIT_ROOT/lib/common/summary.sh"
+    source "$TOOLKIT_ROOT/lib/common/git-diff.sh"
+    source "$TOOLKIT_ROOT/lib/java/version-check.sh"
+
+    echo '<project><modelVersion>4.0.0</modelVersion><groupId>br.com.corp</groupId><artifactId>app</artifactId><version>1.0.0-SNAPSHOT</version></project>' > pom.xml
+    git add pom.xml
+    git commit -m "base commit" --quiet
+
+    git checkout -b feature/minha-tarefa --quiet
+    export BASE_BRANCH="main"
+
+    # Caso A: Versão idêntica -> DEVE FALHAR (retornar 1)
+    step_version_check "STEP" "Versão Pom" >/dev/null 2>&1
+    assert "1" "$?" "Versão idêntica à base deve falhar (1.0.0-SNAPSHOT == 1.0.0-SNAPSHOT)"
+
+    # Caso B: Versão inferior -> DEVE FALHAR (retornar 1)
+    echo '<project><modelVersion>4.0.0</modelVersion><groupId>br.com.corp</groupId><artifactId>app</artifactId><version>0.9.0-SNAPSHOT</version></project>' > pom.xml
+    step_version_check "STEP" "Versão Pom" >/dev/null 2>&1
+    assert "1" "$?" "Versão regredida deve falhar (0.9.0-SNAPSHOT < 1.0.0-SNAPSHOT)"
+
+    # Caso C: Versão incrementada -> DEVE PASSAR (retornar 0)
+    echo '<project><modelVersion>4.0.0</modelVersion><groupId>br.com.corp</groupId><artifactId>app</artifactId><version>1.0.1-SNAPSHOT</version></project>' > pom.xml
+    step_version_check "STEP" "Versão Pom" >/dev/null 2>&1
+    assert "0" "$?" "Versão incrementada deve ser aprovada (1.0.0-SNAPSHOT -> 1.0.1-SNAPSHOT)"
+}
+
 test_async_failures() {
-    printf "\n--- Teste 4: Isolamento de Logs em Falhas Concorrentes ---\n"
+    printf "\n--- Teste 5: Isolamento de Logs em Falhas Concorrentes ---\n"
     source "$TOOLKIT_ROOT/lib/common/logging.sh"
     source "$TOOLKIT_ROOT/lib/common/summary.sh"
     source "$TOOLKIT_ROOT/lib/common/engine.sh"
@@ -112,6 +139,8 @@ test_async_failures() {
 
     local log_out="/tmp/async_out_$$.log"
     engine_run "TESTE FALHAS CONCORRENTES" > "$log_out" 2>&1
+    summary_print "RESUMO TESTE" "OK" "FAIL" >> "$log_out" 2>&1
+
     local has_f1=0 has_f2=0
     grep -q "Erro critico 1" "$log_out" && has_f1=1
     grep -q "Erro critico 2" "$log_out" && has_f2=1
@@ -125,6 +154,7 @@ setup
 test_cache_ttl
 test_toggles
 test_angular_test_resolution
+test_version_increments
 test_async_failures
 teardown
 

@@ -1,48 +1,53 @@
 # Dev Toolkit
 
-Git hooks que aplicam qualidade, segurança e verificações de dependências em projetos **Java** e **Angular**, sem alterar nenhum arquivo do projeto.
-
-## Por que usar
-
-O Dev Toolkit existe para que o desenvolvedor entregue qualidade de forma consistente, independentemente de os projetos corporativos em que atua implementarem ou não essas verificações. Hooks, linters e scanners configurados repositório por repositório dependem de permissões, aprovações e manutenção em cada projeto, e frequentemente simplesmente não existem lá. Aqui o padrão fica em um único lugar, sob controle do dev, e chega a cada máquina pelo self-update no próximo commit.
+Automação inteligente de qualidade, segurança e governança de dependências para projetos **Java** e **Angular**, sem modificar uma única linha de código ou configuração nos repositórios da sua organização.
 
 ---
 
-## Dicionário de Siglas: O que são e por que validar?
+## Por que usar
 
-Entender o propósito de cada tipo de validação ajuda a identificar rapidamente o que corrigir quando o hook apontar uma falha:
+O Dev Toolkit padroniza a entrega de software com alta qualidade e segurança de ponta a ponta, independentemente de os repositórios corporativos possuírem ou não esteiras locais configuradas. Em vez de depender de aprovações burocráticas para incluir plugins em dezenas de `pom.xml` ou `package.json`, o toolkit centraliza as verificações na máquina do desenvolvedor, atualiza ferramentas em background e valida o código antes mesmo da abertura do Pull Request.
+
+---
+
+## Dicionário de Siglas e Conceitos
+
+Entender o propósito de cada mecanismo agiliza o diagnóstico quando a esteira apontar desvios:
 
 * **SAST (Static Application Security Testing)**:
-  * *O que é*: Teste estático de segurança aplicado diretamente ao código-fonte que você escreve (arquivos `.java` e `.ts`).
-  * *Por que validar*: Identifica falhas lógicas e riscos de invasão (como SQL Injection, Cross-Site Scripting (XSS), uso de funções perigosas como `eval`, segredos em texto puro e desserialização insegura) sem precisar compilar ou rodar o sistema.
+  * *O que é*: Análise estática de segurança aplicada diretamente no código-fonte (`.java`, `.ts`, `.js`).
+  * *Por que validar*: Identifica falhas lógicas e brechas graves (como SQL Injection, Cross-Site Scripting (XSS), desserialização insegura, uso de métodos vulneráveis e credenciais expostas) sem compilar ou rodar o sistema.
 * **SCA (Software Composition Analysis)**:
-  * *O que é*: Análise de segurança das dependências de terceiros declaradas nos manifestos (`pom.xml`, `package-lock.json`).
-  * *Por que validar*: Mais de 80% do código de uma aplicação moderna vem de bibliotecas open-source. O SCA vasculha se alguma biblioteca que você importou possui falhas de segurança conhecidas e bloqueia aquelas que já contam com versão corrigida (patch disponível).
+  * *O que é*: Varredura de segurança nas bibliotecas e dependências declaradas nos manifestos (`pom.xml`, `package-lock.json`).
+  * *Por que validar*: Mais de 80% do ecossistema de uma aplicação moderna vem de código aberto. O SCA detecta se alguma dependência possui vulnerabilidades mapeadas e bloqueia apenas aquelas que já contam com correção (patch disponível).
 * **SBOM (Software Bill of Materials)**:
-  * *O que é*: A "lista formal de ingredientes" de software, mapeando o inventário exato de pacotes, versões, licenças e hashes em formato padrão de mercado (CycloneDX ou SPDX).
-  * *Por que validar*: Permite rastreabilidade instantânea. Se uma vulnerabilidade crítica de dia-zero surgir no ecossistema, o SBOM permite saber imediatamente se qualquer projeto da empresa está exposto.
+  * *O que é*: A lista formal de componentes de software (CycloneDX / SPDX).
+  * *Por que validar*: Garante rastreabilidade total. Em caso de vulnerabilidades de dia-zero no mercado, permite identificar imediatamente quais projetos contêm o artefato comprometido.
 * **AST (Abstract Syntax Tree)**:
-  * *O que é*: A árvore de sintaxe abstrata do código-fonte. O analisador decompõe seu código em uma estrutura gramatical em vez de tratá-lo como mero texto ou Regex.
-  * *Por que validar*: Ferramentas baseadas em AST (como `ast-grep`) executam em milissegundos e detectam com precisão cirúrgica comandos proibidos de depuração (`debugger;`, `console.log`, chamadas diretas a prints de sistema) e anti-patterns sem gerar falsos positivos.
+  * *O que é*: Árvore de sintaxe abstrata do código-fonte. O linter decompõe o código em sua representação sintática em vez de inspecioná-lo como mero texto ou Regex.
+  * *Por que validar*: Ferramentas como o `ast-grep` executam em milissegundos e detectam com precisão cirúrgica comandos proibidos de depuração (`debugger;`, `console.log`, chamadas diretas a prints de sistema) e anti-patterns sem gerar falsos positivos.
 * **CVE (Common Vulnerabilities and Exposures)**:
-  * *O que é*: O identificador público mundial de uma vulnerabilidade conhecida (ex: `CVE-2024-12345`).
-  * *Por que validar*: Permite checar a severidade da falha e confirmar se o patch publicado resolve a vulnerabilidade apontada pelo scanner.
+  * *O que é*: O identificador internacional de uma vulnerabilidade conhecida (ex: `CVE-2026-12345`).
+  * *Por que validar*: Permite checar a severidade da falha e confirmar a versão que resolve o problema.
 * **TTL (Time-To-Live)**:
-  * *O que é*: O tempo de vida útil do cache local. No Dev Toolkit, o TTL é configurado estritamente para **3 horas** (10800 segundos).
-  * *Por que usar*: Scanners de CVEs consultam bases externas que são atualizadas várias vezes ao dia. O cache evita reexecuções demoradas a cada commit consecutivo, mas expira a cada 3 horas para garantir que novas vulnerabilidades catalogadas no dia sejam detectadas antes do push.
+  * *O que é*: Tempo de vida útil do cache local. No Dev Toolkit, o TTL é configurado estritamente para **3 horas** (10800 segundos).
+  * *Por que usar*: Scanners de CVEs consultam bases externas dinâmicas. O cache evita reexecuções demoradas a cada commit consecutivo, expirando a cada 3 horas para garantir a detecção de vulnerabilidades catalogadas no dia.
 * **DAG (Directed Acyclic Graph)**:
-  * *O que é*: Grafo direcionado acíclico de dependências. É o algoritmo do motor interno do Dev Toolkit.
-  * *Por que usar*: Permite disparar checagens leves em paralelo e só aguardar compilação ou build para as etapas que dependem estritamente dos binários gerados.
+  * *O que é*: Grafo direcionado acíclico de dependências que orquestra a execução concorrente.
+  * *Por que usar*: Dispara etapas independentes em paralelo (linters, checagens de versão e SAST semântico) e retém em espera apenas validações que dependem estritamente da compilação de binários.
+* **SemVer & Strict Increment**:
+  * *O que é*: Versionamento Semântico e regra estrita de incremento de versão.
+  * *Por que validar*: Impede a abertura de Pull Requests com versões idênticas (`1.0.0 == 1.0.0`) ou regredidas (`0.9.0 < 1.0.0`) em relação à branch base remota (ex: `origin/develop`), garantindo que a esteira de CI/CD corporativa gere releases ordenadas.
 
 ---
 
 ## Princípios de Projeto
 
-* **Invasão Zero aos Projetos**: Nenhuma linha de código, arquivo de configuração (`.eslintrc`, `tsconfig`, etc.) ou dependência é adicionada aos repositórios dos projetos.
-* **Ambiente Restrito**: Projetado para Windows corporativo via Git Bash, operando no espaço de usuário sem privilégios de Administrador.
-* **Execução Assíncrona & Paralela**: As ferramentas rodam em paralelo conforme suas dependências, reduzindo expressivamente o tempo de espera no terminal.
-* **Buffer Isolado de Logs**: Em caso de falhas concorrentes de múltiplos testes ou scanners, os relatórios são organizados sequencialmente ao final da esteira, evitando mensagens sobrepostas ou truncadas.
-* **Self-Update Transparente**: O Dev Toolkit sincroniza com seu repositório oficial a cada execução de qualquer fluxo Git e gerencia binários CLI atualizados em background.
+* **Invasão Zero aos Projetos**: Nenhuma dependência, script npm ou arquivo de configuração (`.eslintrc`, `checkstyle.xml`, etc.) é commitado nos repositórios corporativos.
+* **Isolamento Total entre Stacks**: Configurações, diretórios e branches de Java e Angular são desacoplados. Você pode habilitar apenas a stack que utiliza.
+* **Operação em Espaço de Usuário**: Projetado para Windows corporativo restrito (Git Bash / MSYS2) sem exigir permissões de Administrador.
+* **Execução Assíncrona & Buffer Isolado de Logs**: Todas as validações ocorrem em paralelo em background. Se múltiplos linters ou testes falharem ao mesmo tempo, os relatórios são organizados sequencialmente no final da execução, sem truncamento de tabelas ou poluição visual.
+* **Auto-Atualização e Resiliência de Rede**: O Dev Toolkit se mantém sincronizado via Git e gerencia binários com fallback por web scraping (imune a Rate Limit da API do GitHub).
 
 ---
 
@@ -50,116 +55,139 @@ Entender o propósito de cada tipo de validação ajuda a identificar rapidament
 
 * **Sistema Operacional**: Windows 10/11 ou Linux.
 * **Terminal**: Git Bash (MSYS2).
-* **Git**: `git` configurado e acessível no terminal.
-* **Java** (para projetos Java): JDK 17+ e Apache Maven (`mvn`) no `PATH`.
+* **Git**: CLI do `git` configurada e acessível no PATH.
+* **Java** (se atuar na stack Java): JDK 17+ e Maven (`mvn`) no PATH.
+* **Node.js** (se atuar na stack Angular): Opcional antes do setup (o instalador configura NVS + Node.js LTS + pnpm automaticamente).
 
 ---
 
-## Instalação Passo a Passo
+## Instalação e Configuração Interativa
 
-Abra o terminal **Git Bash** e siga os passos abaixo:
-
-### 1. Clonar o Dev Toolkit
-Clone o repositório em uma pasta local permanente no seu diretório de usuário (ex: `~/dev-toolkit`):
+Abra o terminal **Git Bash** e execute:
 
     git clone https://github.com/danpamine/dev-toolkit.git "$HOME/dev-toolkit"
     cd "$HOME/dev-toolkit"
-
-### 2. Configurar o Shell e Utilitários
-Execute o configurador de ambiente. Ele registrará o comando global `dev` no seu `.bashrc` e aplicará exclusões de arquivos temporários no seu Git global:
-
     bash scripts/setup-bashrc.sh
     source ~/.bashrc
 
-Se for atuar em projetos **Angular**, instale o ecossistema Node.js LTS e PNPM corporativo sem precisar de privilégios de administrador:
+Inicie o assistente de configuração interativo:
 
-    dev setup-node
-    source ~/.bashrc
+    dev init
 
-### 3. Ativar os Hooks nos Repositórios
-Navegue até a pasta raiz onde ficam seus repositórios de trabalho e ative os Git Hooks locais:
+O assistente guiará a configuração de ponta a ponta:
 
-    dev hooks-install /c/Users/$USERNAME/Development
-
-> O comando acima apenas configura o `git config core.hooksPath` apontando para o seu Dev Toolkit local. Nenhum arquivo dos projetos é modificado e nada é enviado ao repositório remoto.
+1. **Seleção de Stacks**: Escolha se você atua em **Java**, **Angular** ou **Ambos**. As perguntas das stacks não selecionadas são suprimidas.
+2. **Diretórios de Ferramentas e Caches**: Você define os caminhos de destino (ex: diretório de binários locais, pasta do Python portátil, cache de validações e a pasta da store global do `pnpm-store`).
+3. **Branch Base por Stack**: Configure a branch de destino dos PRs de forma independente (ex: `develop` para Java e `develop` ou `main` para Angular).
+4. **Perfil de Feature Toggles**: Escolha entre o perfil **Completo**, **Rápido** (sem ferramentas de compilação profunda como SpotBugs e Trivy) ou **Personalizado** (selecionando ferramenta por ferramenta).
+5. **Configuração Automática de Hooks**: O assistente varre o diretório informado e instala os Git Hooks em todos os repositórios encontrados.
 
 ---
 
 ## Fluxos de Validação Automatizados
 
-| Evento Git | Escopo de Validação | Ferramentas Ativas |
-| :--- | :--- | :--- |
-| **`git commit`** | Arquivos em Staging (Incremental) | • **Gitleaks**: Busca credenciais e tokens em staged diff.<br>• **Formatadores**: Google Java Format incremental para Java / Prettier para Angular.<br>• **Linters**: Checkstyle e ast-grep para Java / ESLint Security e ast-grep para Angular.<br>• **Lockfile Sync**: Sincronização do `package-lock.json` mantendo PNPM isolado. |
-| **`git push`** | Branch vs Branch Pai Remota | • **Version Check**: Validação semântica de incremento de versão (`pom.xml` ou `package.json`).<br>• **SCA**: Trivy + Syft e OSV-Scanner (aponta todas as vulnerabilidades com patch mapeado).<br>• **SAST**: Semgrep OSS (regras semânticas) + SpotBugs/FindSecBugs (Java).<br>• **Qualidade & Contratos**: OpenAPI/Swagger linter e PMD.<br>• **Build & Testes**: `mvn test jacoco:report` ou testes do `package.json`. |
-| **`git pull`** | Todo o Repositório | • **Gitleaks Full Scan**: Inspeciona a integridade total do código após o merge para barrar segredos recém-puxados do remoto. |
+```text
+[git commit] ──> Validação Incremental (Apenas arquivos alterados em Staging)
+[git push]   ──> Validação da Branch vs. Branch Base Remota (Strict Version Check + SAST + SCA + Build)
+[git pull]   ──> Integridade Pós-Merge (Gitleaks Full Scan em todo o repositório)
+[dev verify] ──> Validação Completa sob demanda (todos os testes, linters e scanners)
+```
+
+### 1. `git commit` (Pre-commit Incremental)
+* Inspeciona **apenas** os arquivos em staging (`git diff --cached`). Código legado não modificado é ignorado.
+* **Java**: Google Java Format incremental, Checkstyle e ast-grep.
+* **Angular**: Prettier incremental, ESLint Security e ast-grep.
+* **Gitleaks**: Varre commits em preparação contra vazamentos de tokens, senhas e chaves privadas.
+
+### 2. `git push` (Pre-push Estrito)
+* Inspeciona as diferenças entre a branch atual e a branch base remota (`merge-base`).
+* **Version Check Estrito**: Bloqueia o push se a versão local for menor ou igual à versão da branch base remota.
+* **SCA & SAST**: Trivy SCA, Google OSV-Scanner e Semgrep OSS (rodando estritamente nos arquivos alterados).
+* **Testes & Qualidade**: Execução inteligente de testes unitários (Maven / Angular) e validação de contratos OpenAPI.
+
+### 3. Convenção Visual do Terminal
+O Dev Toolkit padroniza as respostas no console e no sumário executivo:
+* `[ OK ]` (Verde): Validação aprovada. Se aprovada com reaproveitamento de hash, exibe `(Cache)` em verde brilhante.
+* `[FALHA]` (Vermelho): Reprovação imediata. O motivo e o relatório detalhado de erros são exibidos no rodapé.
+* `[PULADO]` (Amarelo): Etapa desativada via Feature Toggle ou desnecessária (ex: repositório sem testes físicos).
+* `[BLOQUEADO]` (Púrpura/Magenta): Etapa cancelada preventivamente por falha em uma etapa predecessora da qual dependia (ex: compilação Maven bloqueada por reprovação no SpotBugs).
 
 ---
 
 ## Utilitário CLI `dev`
 
-O Dev Toolkit disponibiliza o utilitário `dev` diretamente no terminal:
+O comando `dev` fica disponível globalmente no seu terminal:
 
+    dev init           Inicia o assistente de configuração interativa de stacks e caminhos
+    dev verify         Executa a validação completa assíncrona do repositório atual
+    dev base <branch>  Define ou altera a branch base para o projeto atual (ex: dev base develop)
     dev install        Instala dependências do projeto (mvn install | pnpm install)
-    dev run            Inicia a aplicação com profiles locais configurados
-    dev test           Executa a suíte de testes unitários do projeto
-    dev lint           Roda manualmente as verificações do pre-commit
-    dev format         Formata o código fonte (Google Java Format / Prettier)
-    dev build          Compila o projeto (mvn package | ng build)
-    dev verify         Validação completa do projeto (Gitleaks Full + Pre-Commit + Pre-Push)
-    dev hooks-install  Ativa os Git Hooks na pasta atual ou caminho informado
-    dev hooks-remove   Remove os Git Hooks dos repositórios
-    dev clean          Limpa logs temporários e cache local
-    dev setup-node     Instala/Atualiza NVS, Node LTS e PNPM corporativo
+    dev run            Executa a aplicação com os perfis locais configurados (mvn | pnpm start)
+    dev test           Executa a suíte de testes unitários de forma autônoma
+    dev lint           Roda manualmente as verificações de pre-commit
+    dev format         Aplica formatação no código alterado (Google Java Format / Prettier)
+    dev build          Compila o projeto (mvn test-compile | ng build)
+    dev hooks-install  Instala os Git Hooks em um diretório ou projeto
+    dev hooks-remove   Remove os Git Hooks configurados
+    dev clean          Limpa caches locais e logs temporários
+    dev setup-node     Instala ou atualiza NVS, Node LTS e PNPM corporativo
 
 ---
 
-## Feature Toggles e Customizações
+## Resolução Inteligente de Testes
 
-Todas as ferramentas vêm ativadas por padrão (`1`). Caso seja necessário desativar temporariamente alguma validação ou customizar comandos:
+Para evitar quebras em microfrontends, bibliotecas ou serviços sem suíte de testes:
+* **Java**: O ciclo de testes (`mvn test jacoco:report`) só é acionado se existirem arquivos físicos `.java` dentro do diretório `src/test/java`. Se o diretório não existir ou estiver vazio, a etapa encerra imediatamente como `[ OK ] (Sem testes no projeto)`.
+* **Angular**: A etapa só é executada se houver um script de teste configurado no `package.json`, target `test` declarado no `angular.json` **e** arquivos físicos de teste (`*.spec.ts`, `*.test.ts`) no projeto.
 
-> **ATENÇÃO:** Nunca edite os arquivos `global.env` na pasta do toolkit. Eles são versionados e qualquer edição direta neles causará conflito e bloqueará o processo de auto-update automático via Git.
+---
 
-### Como customizar ou desativar ferramentas
-Utilize a CLI oficial do toolkit, que grava as configurações em arquivo `.env` na raiz do Dev Toolkit (ignorado pelo Git):
+## Arquitetura de Configurações e Feature Toggles
 
-    # Desativa uma etapa de forma persistente no seu ambiente
-    dev env-set FEATURE_CHECKSTYLE 0
-    dev env-set FEATURE_SPOTBUGS 0
+Nenhuma alteração do desenvolvedor é versionada no repositório do toolkit ou nos projetos corporativos. As variáveis seguem uma hierarquia estrita:
 
-    # Desativa apenas para um único commit no terminal atual
-    FEATURE_CHECKSTYLE=0 git commit -m "feat: ajuste pontual"
+```text
+1. Defaults Versionados (env/<stack>/global.env)
+       ↓
+2. Preferências Globais de Diretórios (env/.env.user)
+       ↓
+3. Preferências por Stack do Dev (env/<stack>/.env.user)
+       ↓
+4. Overrides Pontuais do Repositório Atual (.env.local)
+```
 
-    # Customiza o script de compilação ou teste do projeto
-    dev env-set ANGULAR_BUILD_CMD "pnpm run build:custom"
-    dev env-set JAVA_TEST_CMD "mvn test -Dtest=SmokeTest"
+### Arquivos Gerados (Protegidos no `.gitignore`):
+* `env/.env.user`: Contém `LOCAL_BIN`, `DEV_TOOLKIT_PYTHON_DIR` e `DEV_TOOLKIT_CACHE_DIR`.
+* `env/java/.env.user`: Contém `BASE_BRANCH` e toggles `FEATURE_*` para Java.
+* `env/angular/.env.user`: Contém `BASE_BRANCH`, `DEV_TOOLKIT_STORE_DIR` e toggles `FEATURE_*` para Angular.
+* `.env.local`: Configuração criada na raiz de um projeto específico ao executar `dev base <branch>`.
 
-### Chaves de Toggles Disponíveis
-
-* `FEATURE_GITLEAKS` (Detecção de segredos em staging)
-* `FEATURE_GITLEAKS_PULL` (Detecção de segredos pós-pull)
-* `FEATURE_JAVA_FORMAT` (Google Java Format)
-* `FEATURE_CHECKSTYLE` (Regras de estilo Checkstyle)
-* `FEATURE_PRETTIER` (Formatação Prettier Angular)
-* `FEATURE_ESLINT` (Linter de segurança ESLint)
-* `FEATURE_AST_GREP` (Linter estrutural AST)
-* `FEATURE_LOCKFILE` (Sincronização de package-lock)
-* `FEATURE_VERSION_CHECK` (Incremento semântico de versão)
-* `FEATURE_SCA` (Trivy SCA + Syft SBOM)
-* `FEATURE_OSV` (Google OSV-Scanner)
-* `FEATURE_PMD` (Qualidade de código Java)
-* `FEATURE_OPENAPI` (Validação de contratos Swagger/OpenAPI)
-* `FEATURE_SPOTBUGS` (SpotBugs + FindSecBugs)
-* `FEATURE_SEMGREP` (SAST Semgrep)
-* `FEATURE_BUILD` (ng build)
-* `FEATURE_TEST` (Testes unitários Angular via package.json)
-* `FEATURE_MAVEN_VERIFY` (Testes Maven e JaCoCo)
+### Chaves de Toggles Disponíveis:
+* `FEATURE_VERSION_CHECK`: Validação semântica de versão em `pom.xml` ou `package.json`.
+* `FEATURE_GITLEAKS`: Varredura de credenciais e segredos em staging.
+* `FEATURE_SEMGREP`: Análise estática semântica SAST via Semgrep OSS nativo.
+* `FEATURE_AST_GREP`: Linter estrutural de AST via ast-grep.
+* `FEATURE_OSV`: Varredura de vulnerabilidades de dependências via Google OSV-Scanner.
+* `FEATURE_SCA`: Análise profunda de componentes via Trivy SCA.
+* `FEATURE_SPOTBUGS`: Análise de bytecode Java com SpotBugs e FindSecBugs.
+* `FEATURE_PMD`: Análise de qualidade e boas práticas de código Java.
+* `FEATURE_CHECKSTYLE`: Verificação de regras de estilo em código Java.
+* `FEATURE_JAVA_FORMAT`: Auto-formatação com Google Java Format.
+* `FEATURE_OPENAPI`: Validação de contratos Swagger/OpenAPI.
+* `FEATURE_MAVEN_VERIFY`: Execução de testes unitários e cobertura JaCoCo no Java.
+* `FEATURE_ESLINT`: Linter de código e regras de segurança para Angular.
+* `FEATURE_PRETTIER`: Auto-formatação de código Angular via Prettier.
+* `FEATURE_LOCKFILE`: Sincronização e integridade do lockfile.
+* `FEATURE_BUILD`: Compilação de produção do Angular (`ng build`).
+* `FEATURE_TEST`: Execução de testes unitários Angular via `package.json`.
 
 ---
 
 ## Cache e Logs de Execução
 
-* **Cache Inteligente**: As validações calculam hashes SHA-256 dos arquivos relevantes. Scanners pesados (Trivy e OSV) respeitam o TTL de **3 horas** (10800s). Para ignorar o cache manualmente:
+* **Validação por Hashes**: As etapas geram assinaturas SHA-256 baseadas no conteúdo dos arquivos relevantes.
+* **Expiração Determinística**: Scanners de vulnerabilidades (Trivy e OSV) invalidam o cache após **3 horas** (10800s). Para forçar a execução sem cache manualmente:
 
-      DEV_TOOLKIT_NO_CACHE=1 git push
+      DEV_TOOLKIT_NO_CACHE=1 dev verify
 
-* Visualização de Falhas: Quando uma ou mais verificações falham, seus logs completos são impressos de forma destacada no terminal. Zero arquivos residuais permanecem no computador.
+* **Relatório Consolidado**: Quando ocorre qualquer reprovação, uma seção destacada no rodapé exibe o log completo da ferramenta ofensora, preservando as cores ANSI e detalhando a causa raiz sem truncamento de tabelas.

@@ -1,5 +1,12 @@
+# Dependências e caches locais
 dependencies/*
+!dependencies/.gitkeep
 logs/*
+!logs/.gitkeep
+
+# Configurações do Desenvolvedor (Toggles e Overrides não rastreados)
 .env
 .env.local
 *.local.env
+.env.user
+**/.env.user
