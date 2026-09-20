@@ -7,24 +7,17 @@ if [[ -t 1 ]]; then
     _SU_OK=$'\033[0;32m'
     _SU_FAIL=$'\033[0;31m'
     _SU_SKIP=$'\033[0;33m'
+    _SU_PURPLE=$'\033[1;35m'
+    _SU_CYAN=$'\033[0;36m'
     _SU_RESET=$'\033[0m'
     _SU_DIM=$'\033[2m'
     _SU_BOLD=$'\033[1m'
-    _SU_CYAN=$'\033[0;36m'
     _SU_WHITE=$'\033[0;37m'
     _SU_SUCCESS=$'\033[1;32m'
     _SU_ERROR=$'\033[1;31m'
 else
-    _SU_OK=""
-    _SU_FAIL=""
-    _SU_SKIP=""
-    _SU_RESET=""
-    _SU_DIM=""
-    _SU_BOLD=""
-    _SU_CYAN=""
-    _SU_WHITE=""
-    _SU_SUCCESS=""
-    _SU_ERROR=""
+    _SU_OK="" _SU_FAIL="" _SU_SKIP="" _SU_PURPLE="" _SU_CYAN="" _SU_RESET=""
+    _SU_DIM="" _SU_BOLD="" _SU_WHITE="" _SU_SUCCESS="" _SU_ERROR=""
 fi
 
 declare -a _SU_STEPS=()
@@ -85,21 +78,30 @@ summary_print() {
         local status_label color
 
         case "$status" in
-            OK)   status_label="[ OK ]";    color="$_SU_OK"   ;;
-            FAIL) status_label="[FALHA]";   color="$_SU_FAIL"  ;;
-            SKIP) status_label="[PULADO]";  color="$_SU_SKIP"  ;;
-            *)    status_label="[ ??? ]";   color=""           ;;
+            OK)      status_label="[ OK ]";        color="$_SU_OK"     ;;
+            FAIL)    status_label="[FALHA]";       color="$_SU_FAIL"   ;;
+            SKIP)    status_label="[PULADO]";      color="$_SU_SKIP"   ;;
+            BLOCKED) status_label="[BLOQUEADO]";   color="$_SU_PURPLE" ;;
+            *)       status_label="[ ??? ]";       color=""            ;;
         esac
 
-        local pad_len=$((36 - ${#step}))
+        local pad_len=$((40 - ${#step}))
         [[ $pad_len -lt 1 ]] && pad_len=1
         local padding
         padding=$(printf '%*s' "$pad_len" '')
 
-        printf "  %s%s: %s%s%s" "$step" "$padding" "$color" "$status_label" "$_SU_RESET"
+        printf "  %s%s: %s%-13s%s" "$step" "$padding" "$color" "$status_label" "$_SU_RESET"
+
         if [[ -n "$detail" ]]; then
-            printf " ${_SU_WHITE}(%s)${_SU_RESET}" "$detail"
+            if [[ "$detail" =~ Cache ]]; then
+                printf " ${_SU_OK}(%s)${_SU_RESET}" "$detail"
+            elif [[ "$status" == "BLOCKED" ]]; then
+                printf " ${_SU_PURPLE}(%s)${_SU_RESET}" "$detail"
+            else
+                printf " ${_SU_WHITE}(%s)${_SU_RESET}" "$detail"
+            fi
         fi
+
         if [[ -n "$time" && "$time" -gt 0 ]]; then
             printf " ${_SU_DIM}%ss${_SU_RESET}" "$time"
         fi
@@ -129,6 +131,11 @@ summary_print() {
     fi
     printf "\n  ${_SU_BOLD}Tempo total: ${total_time}s${_SU_RESET}\n"
     printf "${_SU_CYAN}==================================================${_SU_RESET}\n\n"
+
+    # Imprime os detalhes das falhas logo abaixo da tabela de resumo
+    if type engine_print_failures &>/dev/null; then
+        engine_print_failures
+    fi
 }
 
 summary_has_failures() {

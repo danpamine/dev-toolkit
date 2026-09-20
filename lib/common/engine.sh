@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# engine.sh - Orquestrador Assíncrono com Reenumeração e Logs Visíveis no Terminal
+# engine.sh - Orquestrador Assíncrono com Propagação de Detalhes
 # ==============================================================================
 
 declare -a _ENG_IDS=()
@@ -9,6 +9,11 @@ declare -a _ENG_FUNCS=()
 declare -a _ENG_TOGGLES=()
 declare -a _ENG_DEPS=()
 declare -a _ENG_ACTIVE_INDICES=()
+
+declare -A _ENG_STEP_NUM_MAP
+declare -A _ENG_STEP_STATE
+declare -A _ENG_STEP_PIDS
+declare -A _ENG_STEP_LAST_SUBSTEP
 
 _ENG_TMP_DIR="/tmp/toolkit_engine_$$"
 
@@ -19,7 +24,13 @@ engine_reset() {
     _ENG_TOGGLES=()
     _ENG_DEPS=()
     _ENG_ACTIVE_INDICES=()
-    rm -rf "$_ENG_TMP_DIR"
+
+    for k in "${!_ENG_STEP_NUM_MAP[@]}"; do unset "_ENG_STEP_NUM_MAP[$k]"; done
+    for k in "${!_ENG_STEP_STATE[@]}"; do unset "_ENG_STEP_STATE[$k]"; done
+    for k in "${!_ENG_STEP_PIDS[@]}"; do unset "_ENG_STEP_PIDS[$k]"; done
+    for k in "${!_ENG_STEP_LAST_SUBSTEP[@]}"; do unset "_ENG_STEP_LAST_SUBSTEP[$k]"; done
+
+    rm -rf "$_ENG_TMP_DIR" 2>/dev/null || true
     mkdir -p "$_ENG_TMP_DIR"
 }
 
@@ -64,17 +75,56 @@ engine_run() {
         return 0
     fi
 
-    declare -A step_num_map=()
-    declare -A step_state=()
-    declare -A step_pids=()
-
     local seq=1
     for idx in "${_ENG_ACTIVE_INDICES[@]}"; do
         local id="${_ENG_IDS[$idx]}"
-        step_num_map["$id"]="$seq"
-        step_state["$id"]="PENDING"
+        _ENG_STEP_NUM_MAP["$id"]="$seq"
+        _ENG_STEP_STATE["$id"]="PENDING"
+        _ENG_STEP_LAST_SUBSTEP["$id"]=""
         ((seq++))
     done
+
+    printf "\n${_C_BCYAN}Iniciando execução assíncrona (%s etapas ativas)...${_C_RESET}\n\n" "$total_active"
+
+    for idx in "${_ENG_ACTIVE_INDICES[@]}"; do
+        local id="${_ENG_IDS[$idx]}"
+        local desc="${_ENG_DESCS[$idx]}"
+        local func="${_ENG_FUNCS[$idx]}"
+        local dep="${_ENG_DEPS[$idx]}"
+        local s_num="${_ENG_STEP_NUM_MAP[$id]}"
+        local label="ETAPA ${s_num}/${total_active}"
+
+        if [[ -z "$dep" ]]; then
+            local out_file="${_ENG_TMP_DIR}/${id}.log"
+            local meta_file="${_ENG_TMP_DIR}/${id}.meta"
+            local substep_file="${_ENG_TMP_DIR}/${id}.substep"
+            local detail_file="${_ENG_TMP_DIR}/${id}.detail"
+            echo "" > "$substep_file"
+            echo "" > "$detail_file"
+
+            _ENG_STEP_STATE["$id"]="RUNNING"
+            printf "${_C_BOLD}[%s] %s${_C_RESET}\n" "$label" "$desc"
+            printf "  ${_C_INFO}↳ Em execução em segundo plano...${_C_RESET}\n"
+
+            (
+                export _CURRENT_ENGINE_SUBSTEP_FILE="$substep_file"
+                export _CURRENT_ENGINE_DETAIL_FILE="$detail_file"
+                start_t=$(date +%s)
+                "$func" "$label" "$desc" > "$out_file" 2>&1
+                code=$?
+                end_t=$(date +%s)
+                duration=$((end_t - start_t))
+                echo "${code}:${duration}" > "$meta_file"
+            ) < /dev/null &
+            _ENG_STEP_PIDS["$id"]=$!
+        else
+            _ENG_STEP_STATE["$id"]="WAITING"
+            printf "${_C_BOLD}[%s] %s${_C_RESET}\n" "$label" "$desc"
+            printf "  ${_C_PURPLE}↳ Aguardando conclusão da dependência [%s]...${_C_RESET}\n" "$dep"
+        fi
+    done
+
+    printf "\n"
 
     local pending_count=$total_active
 
@@ -84,95 +134,118 @@ engine_run() {
             local desc="${_ENG_DESCS[$idx]}"
             local func="${_ENG_FUNCS[$idx]}"
             local dep="${_ENG_DEPS[$idx]}"
-            local s_num="${step_num_map[$id]}"
+            local s_num="${_ENG_STEP_NUM_MAP[$id]}"
             local label="ETAPA ${s_num}/${total_active}"
 
-            if [[ "${step_state[$id]}" == "PENDING" ]]; then
-                if [[ -n "$dep" ]]; then
-                    if [[ "${step_state[$dep]:-}" == "PENDING" || "${step_state[$dep]:-}" == "RUNNING" ]]; then
-                        continue
-                    elif [[ "${step_state[$dep]:-}" != "DONE_0" ]]; then
-                        step_state["$id"]="SKIPPED_DEP"
-                        summary_add "$desc" "SKIP" "Dependência (${dep}) falhou"
-                        ((pending_count--))
-                        continue
-                    fi
+            if [[ "${_ENG_STEP_STATE[$id]}" == "WAITING" ]]; then
+                if [[ "${_ENG_STEP_STATE[$dep]:-}" =~ ^DONE_0$ ]]; then
+                    local out_file="${_ENG_TMP_DIR}/${id}.log"
+                    local meta_file="${_ENG_TMP_DIR}/${id}.meta"
+                    local substep_file="${_ENG_TMP_DIR}/${id}.substep"
+                    local detail_file="${_ENG_TMP_DIR}/${id}.detail"
+                    echo "" > "$substep_file"
+                    echo "" > "$detail_file"
+
+                    _ENG_STEP_STATE["$id"]="RUNNING"
+                    printf "${_C_BOLD}[%s] %s${_C_RESET}\n" "$label" "$desc"
+                    printf "  ${_C_INFO}↳ Dependência [%s] concluída. Iniciando execução...${_C_RESET}\n" "$dep"
+
+                    (
+                        export _CURRENT_ENGINE_SUBSTEP_FILE="$substep_file"
+                        export _CURRENT_ENGINE_DETAIL_FILE="$detail_file"
+                        start_t=$(date +%s)
+                        "$func" "$label" "$desc" > "$out_file" 2>&1
+                        code=$?
+                        end_t=$(date +%s)
+                        duration=$((end_t - start_t))
+                        echo "${code}:${duration}" > "$meta_file"
+                    ) < /dev/null &
+                    _ENG_STEP_PIDS["$id"]=$!
+                elif [[ "${_ENG_STEP_STATE[$dep]:-}" =~ ^DONE_[1-9] || "${_ENG_STEP_STATE[$dep]:-}" == "SKIPPED_DEP" ]]; then
+                    _ENG_STEP_STATE["$id"]="SKIPPED_DEP"
+                    log_step "$label" "$desc" "BLOCKED" "Dependência ($dep) falhou"
+                    summary_add "$desc" "BLOCKED" "Dependência ($dep) falhou"
+                    ((pending_count--))
                 fi
-
-                local out_file="${_ENG_TMP_DIR}/${id}.log"
-                local meta_file="${_ENG_TMP_DIR}/${id}.meta"
-
-                step_state["$id"]="RUNNING"
-                (
-                    start_t=$(date +%s)
-                    "$func" "$label" "$desc" > "$out_file" 2>&1
-                    code=$?
-                    end_t=$(date +%s)
-                    duration=$((end_t - start_t))
-                    echo "${code}:${duration}" > "$meta_file"
-                ) &
-                step_pids["$id"]=$!
             fi
         done
 
         for idx in "${_ENG_ACTIVE_INDICES[@]}"; do
             local id="${_ENG_IDS[$idx]}"
-            if [[ "${step_state[$id]}" == "RUNNING" ]]; then
-                local pid="${step_pids[$id]}"
+            if [[ "${_ENG_STEP_STATE[$id]}" == "RUNNING" ]]; then
+                local s_num="${_ENG_STEP_NUM_MAP[$id]}"
+                local label="ETAPA ${s_num}/${total_active}"
+                local desc="${_ENG_DESCS[$idx]}"
+
+                local substep_file="${_ENG_TMP_DIR}/${id}.substep"
+                if [[ -s "$substep_file" ]]; then
+                    local current_sub
+                    current_sub=$(cat "$substep_file" 2>/dev/null)
+                    if [[ -n "$current_sub" && "$current_sub" != "${_ENG_STEP_LAST_SUBSTEP[$id]}" ]]; then
+                        _ENG_STEP_LAST_SUBSTEP["$id"]="$current_sub"
+                        printf "  ${_C_DIM}[%s] ↳ %s...${_C_RESET}\n" "$label" "$current_sub"
+                    fi
+                fi
+
+                local pid="${_ENG_STEP_PIDS[$id]}"
                 if ! kill -0 "$pid" 2>/dev/null; then
                     wait "$pid" 2>/dev/null
                     local meta
                     meta=$(cat "${_ENG_TMP_DIR}/${id}.meta" 2>/dev/null || echo "1:0")
                     local exit_code="${meta%%:*}"
                     local duration="${meta##*:}"
-                    step_state["$id"]="DONE_${exit_code}"
+                    _ENG_STEP_STATE["$id"]="DONE_${exit_code}"
                     ((pending_count--))
 
-                    local desc="${_ENG_DESCS[$idx]}"
-                    local s_num="${step_num_map[$id]}"
-                    local label="ETAPA ${s_num}/${total_active}"
+                    local detail
+                    detail="$(cat "${_ENG_TMP_DIR}/${id}.detail" 2>/dev/null | tr -d '\r\n')"
 
                     if [[ "$exit_code" -eq 0 ]]; then
-                        log_step "$label" "$desc" "OK" "${duration}s"
-                        summary_add "$desc" "OK" "" "" "$duration"
+                        local step_det="${duration}s"
+                        [[ -n "$detail" ]] && step_det="${detail}, ${duration}s"
+                        log_step "$label" "$desc" "OK" "$step_det"
+                        summary_add "$desc" "OK" "$detail" "" "$duration"
                     else
-                        log_step "$label" "$desc" "FAIL" "${duration}s"
-                        summary_add "$desc" "FAIL" "Detalhes abaixo" "" "$duration"
+                        local fail_det="Detalhes abaixo"
+                        [[ -n "$detail" ]] && fail_det="$detail"
+                        log_step "$label" "$desc" "FAIL" "${fail_det}, ${duration}s"
+                        summary_add "$desc" "FAIL" "$fail_det" "" "$duration"
                     fi
                 fi
             fi
         done
-        sleep 0.1
+        sleep 0.2
     done
+}
 
-    # Exibição direta e consolidada de logs de falhas no terminal
+engine_print_failures() {
     local has_failures=0
     for idx in "${_ENG_ACTIVE_INDICES[@]}"; do
         local id="${_ENG_IDS[$idx]}"
-        if [[ "${step_state[$id]}" =~ ^DONE_[1-9] ]]; then
+        if [[ "${_ENG_STEP_STATE[$id]:-}" =~ ^DONE_[1-9] ]]; then
             has_failures=1
             break
         fi
     done
 
     if [[ $has_failures -eq 1 ]]; then
-        printf "\n${_C_RED}======================================================================${_C_RESET}\n"
-        printf "${_C_RED}                     RELATÓRIO DE FALHAS NO TERMINAL                  ${_C_RESET}\n"
+        printf "${_C_RED}======================================================================${_C_RESET}\n"
+        printf "${_C_RED}                 RELATÓRIO CONSOLIDADO DE FALHAS                      ${_C_RESET}\n"
         printf "${_C_RED}======================================================================${_C_RESET}\n"
 
         for idx in "${_ENG_ACTIVE_INDICES[@]}"; do
             local id="${_ENG_IDS[$idx]}"
             local desc="${_ENG_DESCS[$idx]}"
-            local state="${step_state[$id]}"
-            local s_num="${step_num_map[$id]}"
+            local state="${_ENG_STEP_STATE[$id]:-}"
+            local s_num="${_ENG_STEP_NUM_MAP[$id]:-0}"
             local log_path="${_ENG_TMP_DIR}/${id}.log"
 
             if [[ "$state" =~ ^DONE_[1-9] ]]; then
                 local code="${state##DONE_}"
-                printf "\n${_C_BYELLOW}[FALHA] ETAPA %s/%s: %s (Status de Saída: %s)${_C_RESET}\n" "$s_num" "$total_active" "$desc" "$code"
+                printf "\n${_C_BYELLOW}[FALHA] ETAPA %s/%s: %s (Status: %s)${_C_RESET}\n" "$s_num" "${#_ENG_ACTIVE_INDICES[@]}" "$desc" "$code"
                 printf "${_C_WHITE}----------------------------------------------------------------------${_C_RESET}\n"
                 if [[ -s "$log_path" ]]; then
-                    cat "$log_path"
+                    tr -d '\000-\010\013\014\016-\032\034-\037' < "$log_path"
                 else
                     printf "  [Nenhuma saída registrada pelo comando]\n"
                 fi
@@ -182,6 +255,5 @@ engine_run() {
         printf "\n"
     fi
 
-    # Limpeza imediata de arquivos temporários do ciclo
-    rm -rf "$_ENG_TMP_DIR"
+    rm -rf "$_ENG_TMP_DIR" 2>/dev/null || true
 }
