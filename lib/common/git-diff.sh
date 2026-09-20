@@ -1,29 +1,49 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# git-diff.sh - Detecção de Branch Pai e Arquivos Alterados
+# git-diff.sh - Resolução Determinística da Branch Base Remota e Diffs
 # ==============================================================================
 
-git_diff_find_parent_branch() {
-    local current_branch best_merge_base="" best_parent="" min_distance=999999
+git_diff_resolve_base_ref() {
+    local current_branch
     current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
-    while IFS= read -r rbranch; do
-        rbranch="$(echo "$rbranch" | xargs)"
-        [[ -z "$rbranch" ]] && continue
-        local mb
-        mb="$(git merge-base HEAD "$rbranch" 2>/dev/null)"
-        [[ -z "$mb" ]] && continue
-        local distance
-        distance="$(git rev-list --count "${mb}..HEAD" 2>/dev/null || echo 999999)"
-        if [[ "$distance" -lt "$min_distance" ]]; then
-            min_distance=$distance
-            best_merge_base="$mb"
-            best_parent="$rbranch"
-        fi
-    done < <(git branch -r 2>/dev/null | grep -v "HEAD" | grep -v "/${current_branch}$")
 
-    if [[ -n "$best_merge_base" ]]; then
-        echo "${best_merge_base} ${best_parent}"
+    local candidates=()
+    if [[ -n "${BASE_BRANCH:-}" ]]; then
+        candidates+=("origin/$BASE_BRANCH" "$BASE_BRANCH")
     fi
+    candidates+=("origin/develop" "develop" "origin/develop" "develop" "origin/main" "main" "origin/master" "master")
+
+    local cand
+    for cand in "${candidates[@]}"; do
+        [[ "$cand" == "$current_branch" || "$cand" == "origin/$current_branch" ]] && continue
+        if git rev-parse --verify "$cand^{commit}" >/dev/null 2>&1; then
+            echo "$cand"
+            return 0
+        fi
+    done
+
+    echo ""
+    return 1
+}
+
+git_diff_find_parent_branch() {
+    local base_ref
+    base_ref="$(git_diff_resolve_base_ref)"
+
+    if [[ -z "$base_ref" ]]; then
+        if git rev-parse HEAD~1^{commit} >/dev/null 2>&1; then
+            echo "$(git rev-parse HEAD~1) HEAD~1"
+            return 0
+        fi
+        return 1
+    fi
+
+    local mb
+    mb="$(git merge-base HEAD "$base_ref" 2>/dev/null)"
+    [[ -z "$mb" ]] && mb="$(git rev-parse "$base_ref^{commit}" 2>/dev/null)"
+
+    echo "${mb} ${base_ref}"
+    return 0
 }
 
 git_diff_staged_files() {
@@ -48,20 +68,21 @@ git_diff_branch_files() {
     fi
 }
 
+git_diff_target_files() {
+    local files=""
+    if [[ "${_CURRENT_HOOK_ACTION:-}" == "pre-commit" ]]; then
+        files="$(git_diff_staged_files "$@")"
+    else
+        files="$(git_diff_branch_files "$@")"
+        if [[ -z "$files" ]]; then
+            files="$(git_diff_staged_files "$@")"
+        fi
+    fi
+    echo "$files"
+}
+
 git_diff_parent_sha() {
     local parent_info
     parent_info="$(git_diff_find_parent_branch)"
     echo "${parent_info%% *}"
-}
-
-git_diff_has_staged_files() {
-    local files
-    files="$(git_diff_staged_files "$@")"
-    [[ -n "$files" ]]
-}
-
-git_diff_has_branch_changes() {
-    local files
-    files="$(git_diff_branch_files "$@")"
-    [[ -n "$files" ]]
 }
