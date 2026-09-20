@@ -7,10 +7,9 @@ BASHRC="${HOME}/.bashrc"
 MARKER="# >>> dev-toolkit >>>"
 END_MARKER="# <<< dev-toolkit <<<"
 
-# ── Configuração de Git Ignore Global (Não Invasivo) ──────────────────────
 GITIGNORE_GLOBAL="${HOME}/.gitignore_global"
 touch "$GITIGNORE_GLOBAL"
-for pattern in "pnpm-lock.yaml" "pnpm-workspace.yaml" "pnpm-*.yaml" "pnpm-debug.log*" ".pnpm-store" ".pnpm-node-linker"; do
+for pattern in "pnpm-lock.yaml" "pnpm-workspace.yaml" "pnpm-*.yaml" "pnpm-debug.log*" ".pnpm-store" ".pnpm-node-linker" ".env.local" ".env.user"; do
     if ! grep -qxF "$pattern" "$GITIGNORE_GLOBAL" 2>/dev/null; then
         echo "$pattern" >> "$GITIGNORE_GLOBAL"
     fi
@@ -21,15 +20,11 @@ echo ""
 echo "  Setup: dev() no .bashrc"
 echo ""
 
-# ── Remove bloco dev-toolkit anterior (entre marcadores) ──
 if grep -q "$MARKER" "$BASHRC" 2>/dev/null; then
-    echo "[INFO] Removendo bloco dev-toolkit anterior..."
     sed -i "/$MARKER/,/$END_MARKER/d" "$BASHRC"
 fi
 
-# ── Remove função dev() solta (sem marcadores) ──
 if grep -q '^dev() {' "$BASHRC" 2>/dev/null; then
-    echo "[INFO] Removendo função dev() existente (sem marcadores)..."
     awk '
         /^dev\(\) \{/ { in_dev = 1; next }
         in_dev && /^\}/ { in_dev = 0; next }
@@ -38,7 +33,6 @@ if grep -q '^dev() {' "$BASHRC" 2>/dev/null; then
     ' "$BASHRC" > "${BASHRC}.tmp" && mv "${BASHRC}.tmp" "$BASHRC"
 fi
 
-# ── Adiciona novo bloco dev-toolkit ──
 cat >> "$BASHRC" << 'BASHRC_EOF'
 # >>> dev-toolkit >>>
 export DEV_TOOLKIT_HOME="__TOOLKIT_PATH__"
@@ -49,6 +43,9 @@ dev() {
         return 1
     fi
     case "${1:-help}" in
+        init|setup)
+            bash "$DEV_TOOLKIT_HOME/scripts/setup-interactive.sh"
+            ;;
         install)
             if [ -f "$DEV_TOOLKIT_HOME/lib/common/env.sh" ]; then
                 TOOLKIT_ROOT="$DEV_TOOLKIT_HOME"
@@ -99,19 +96,16 @@ dev() {
                 env_load
             fi
             if [ -f "pom.xml" ]; then
-                echo "[INFO] Java: Executando Spring Boot com suporte a ENVs e Flags..."
+                echo "[INFO] Java: Executando Spring Boot com suporte a ENVs..."
                 local active_profile="${SPRING_PROFILES_ACTIVE:-${PROFILE:-local}}"
                 local jvm_args="${JAVA_OPTS:-}${JVM_FLAGS:+ $JVM_FLAGS}"
                 jvm_args="-Dspring.profiles.active=${active_profile} ${jvm_args}"
-                echo "[INFO] Profile Spring: $active_profile"
-                echo "[INFO] Aplicando JVM Flags: $jvm_args"
                 mvn spring-boot:run -Dspring-boot.run.jvmArguments="$jvm_args"
             elif [ -f "angular.json" ]; then
-                echo "[INFO] Angular: Executando servidor de dev..."
+                echo "[INFO] Angular: Executando servidor..."
                 local ng_port="${PORT:-4200}"
                 local ng_host="${HOST:-localhost}"
                 local ng_extra="${NG_ARGS:-}"
-                echo "[INFO] Endereço: http://${ng_host}:${ng_port}"
                 if command -v pnpm &>/dev/null; then
                     pnpm start --port "$ng_port" --host "$ng_host" $ng_extra
                 else
@@ -154,7 +148,7 @@ dev() {
                 if [ -f "$gjf_jar" ]; then
                     find src -name "*.java" -exec java -jar "$gjf_jar" --replace {} +
                 else
-                    echo "[ERRO] google-java-format.jar não encontrado em ~/.local/bin"
+                    echo "[ERRO] google-java-format.jar não encontrado"
                     return 1
                 fi
             elif [ -f "angular.json" ]; then
@@ -182,38 +176,24 @@ dev() {
             fi
             ;;
         verify|validate)
-            if [ -f "$DEV_TOOLKIT_HOME/lib/common/env.sh" ]; then
-                TOOLKIT_ROOT="$DEV_TOOLKIT_HOME"
-                source "$DEV_TOOLKIT_HOME/lib/common/env.sh"
-                env_load
-            fi
-            if [ -f "pom.xml" ] || [ -f "angular.json" ]; then
-                echo ""
-                echo "=================================================="
-                echo "  Iniciando Validação Completa do Projeto"
-                echo "=================================================="
-                echo ""
-                source "$DEV_TOOLKIT_HOME/lib/common/logging.sh"
-                source "$DEV_TOOLKIT_HOME/lib/common/bootstrap.sh"
-                source "$DEV_TOOLKIT_HOME/lib/common/gitleaks.sh"
-                step_gitleaks_full
-                local _gl_exit=$?
-                if [ $_gl_exit -ne 0 ]; then
-                    echo "[ERRO] Gitleaks identificou segredos expostos no repositório!"
-                    return $_gl_exit
-                fi
-
-                if [ -f "pom.xml" ]; then
-                    bash "$DEV_TOOLKIT_HOME/hooks/java/pre-commit" || return $?
-                    bash "$DEV_TOOLKIT_HOME/hooks/java/pre-push" || return $?
-                elif [ -f "angular.json" ]; then
-                    bash "$DEV_TOOLKIT_HOME/hooks/angular/pre-commit" || return $?
-                    bash "$DEV_TOOLKIT_HOME/hooks/angular/pre-push" || return $?
-                fi
+            if [ -f "pom.xml" ]; then
+                bash "$DEV_TOOLKIT_HOME/hooks/java/verify"
+            elif [ -f "angular.json" ]; then
+                bash "$DEV_TOOLKIT_HOME/hooks/angular/verify"
             else
-                echo "[ERRO] Tipo de projeto não reconhecido (pom.xml ou angular.json ausente)"
+                echo "[ERRO] Tipo de projeto não reconhecido"
                 return 1
             fi
+            ;;
+        base)
+            if [ -z "${2:-}" ]; then
+                echo "Branch base atual: ${BASE_BRANCH:ddevelop}"
+                echo "Uso: dev base <nome-da-branch> (ex: dev base develop)"
+                return 0
+            fi
+            export BASE_BRANCH="$2"
+            echo "BASE_BRANCH=$2" > ".env.local"
+            echo "[OK] Branch base definida: $2 (salvo em .env.local)"
             ;;
         hooks-install)
             bash "$DEV_TOOLKIT_HOME/scripts/install-hooks.sh" "${2:-.}"
@@ -231,14 +211,16 @@ dev() {
         help|*)
             echo "dev-toolkit — Comandos disponíveis:"
             echo ""
+            echo "  dev init           Assistente interativo de configuração"
+            echo "  dev verify         Validação completa e assíncrona do projeto"
+            echo "  dev base <branch>  Altera a branch base de comparação (ex: dev base develop)"
             echo "  dev install        Instala dependências (mvn install | pnpm install)"
             echo "  dev run            Executa a aplicação com ENVs (mvn | pnpm start)"
             echo "  dev test           Executa testes (mvn test | npm/pnpm test)"
             echo "  dev lint           Executa linting (pre-commit hook)"
             echo "  dev format         Formata código (google-java-format | prettier)"
             echo "  dev build          Compila o projeto (mvn package | ng build)"
-            echo "  dev verify         Validação completa (Gitleaks Full + Pre-Commit + Pre-Push)"
-            echo "  dev hooks-install  Instala Git Hooks no repositório atual"
+            echo "  dev hooks-install  Instala Git Hooks nos repositórios"
             echo "  dev hooks-remove   Remove Git Hooks"
             echo "  dev clean          Limpa cache local"
             echo "  dev setup-node     Instala NVS + Node.js LTS + pnpm"

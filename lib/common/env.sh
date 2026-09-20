@@ -1,52 +1,34 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# env.sh - Resolução de Variáveis de Ambiente e Caminhos Configuráveis
+# env.sh - Carregamento Hierárquico de Configurações e Diretórios Customizados
 # ==============================================================================
 
-TOOLKIT_ROOT="${TOOLKIT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-TOOLKIT_ROOT="${TOOLKIT_ROOT%$'\r'}"
-
-# Resolução de diretórios configuráveis pelo desenvolvedor com sanitização de CRLF
-export DEV_TOOLKIT_DEPENDENCIES_DIR="${DEV_TOOLKIT_DEPENDENCIES_DIR:-$TOOLKIT_ROOT/dependencies}"
-DEV_TOOLKIT_DEPENDENCIES_DIR="${DEV_TOOLKIT_DEPENDENCIES_DIR%$'\r'}"
-
-export LOCAL_BIN="${DEV_TOOLKIT_BIN_DIR:-${LOCAL_BIN:-$HOME/.local/bin}}"
-LOCAL_BIN="${LOCAL_BIN%$'\r'}"
-
-export DEV_TOOLKIT_PYTHON_DIR="${DEV_TOOLKIT_PYTHON_DIR:-$DEV_TOOLKIT_DEPENDENCIES_DIR/python}"
-DEV_TOOLKIT_PYTHON_DIR="${DEV_TOOLKIT_PYTHON_DIR%$'\r'}"
-
-export DEV_TOOLKIT_STORE_DIR="${DEV_TOOLKIT_STORE_DIR:-$DEV_TOOLKIT_DEPENDENCIES_DIR/pnpm-store}"
-DEV_TOOLKIT_STORE_DIR="${DEV_TOOLKIT_STORE_DIR%$'\r'}"
-
-export DEV_TOOLKIT_CACHE_DIR="${DEV_TOOLKIT_CACHE_DIR:-/tmp/cicd_cache}"
-DEV_TOOLKIT_CACHE_DIR="${DEV_TOOLKIT_CACHE_DIR%$'\r'}"
-
-export DEV_TOOLKIT_LOGS_DIR="${DEV_TOOLKIT_LOGS_DIR:-$TOOLKIT_ROOT/logs}"
-DEV_TOOLKIT_LOGS_DIR="${DEV_TOOLKIT_LOGS_DIR%$'\r'}"
-
-export PATH="$LOCAL_BIN:$DEV_TOOLKIT_PYTHON_DIR:$DEV_TOOLKIT_PYTHON_DIR/Scripts:$PATH"
-
 env_load() {
-    local repo_dir
-    repo_dir="$(pwd)"
-    local repo_name
-    repo_name="$(basename "$repo_dir")"
-    local tech=""
+    local toolkit_root="${TOOLKIT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
-    if [[ -f "$repo_dir/pom.xml" ]]; then
-        tech="java"
-    elif [[ -f "$repo_dir/angular.json" ]]; then
-        tech="angular"
+    # 1. Configurações globais de caminhos (LOCAL_BIN, PYTHON_DIR, CACHE_DIR)
+    if [[ -f "$toolkit_root/env/.env.user" ]]; then
+        source "$toolkit_root/env/.env.user"
     fi
 
-    [[ -z "$tech" ]] && return 0
+    # 2. Stack Java: carrega definições e branch base específicas de Java
+    if [[ -f "pom.xml" ]]; then
+        [[ -f "$toolkit_root/env/java/global.env" ]] && source "$toolkit_root/env/java/global.env"
+        [[ -f "$toolkit_root/env/java/.env.user" ]] && source "$toolkit_root/env/java/.env.user"
+    fi
 
-    local global_env="${TOOLKIT_ROOT}/env/${tech}/global.env"
-    local specific_env="${TOOLKIT_ROOT}/env/${tech}/${repo_name}.env"
+    # 3. Stack Angular: carrega definições, store do pnpm e branch base específicas de Angular
+    if [[ -f "angular.json" ]]; then
+        [[ -f "$toolkit_root/env/angular/global.env" ]] && source "$toolkit_root/env/angular/global.env"
+        [[ -f "$toolkit_root/env/angular/.env.user" ]] && source "$toolkit_root/env/angular/.env.user"
+    fi
 
-    set -a
-    [[ -f "$global_env" ]] && . "$global_env"
-    [[ -f "$specific_env" ]] && . "$specific_env"
-    set +a
+    # 4. Overrides locais do repositório atual (se houver)
+    if [[ -f ".env.local" ]]; then
+        source ".env.local"
+    fi
+
+    # Garante que o diretório customizado de binários esteja sempre no PATH
+    export LOCAL_BIN="${LOCAL_BIN:-$HOME/.local/bin}"
+    export PATH="$LOCAL_BIN:$PATH"
 }

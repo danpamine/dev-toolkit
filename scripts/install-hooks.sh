@@ -67,7 +67,6 @@ while IFS= read -r ng_file; do
     ng_dir="$(dirname "$ng_file")"
     repo_name="$(basename "$ng_dir")"
     if git -C "$ng_dir" rev-parse --git-dir > /dev/null 2>&1; then
-        # Evita duplicar se já foi encontrado por pom.xml
         already_found=false
         for r in "${found_repos[@]}"; do
             if [[ "$r" == "$ng_dir" ]]; then
@@ -120,9 +119,9 @@ for repo_dir in "${found_repos[@]}"; do
         continue
     fi
     if git -C "$repo_dir" config core.hooksPath "$HOOKS_DIR" 2>/dev/null; then
-        chmod +x "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/pre-push" 2>/dev/null
-        chmod +x "$HOOKS_DIR/java/pre-commit" "$HOOKS_DIR/java/pre-push" 2>/dev/null
-        chmod +x "$HOOKS_DIR/angular/pre-commit" "$HOOKS_DIR/angular/pre-push" 2>/dev/null
+        chmod +x "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/pre-push" "$HOOKS_DIR/post-merge" 2>/dev/null
+        chmod +x "$HOOKS_DIR/java/pre-commit" "$HOOKS_DIR/java/pre-push" "$HOOKS_DIR/java/verify" 2>/dev/null
+        chmod +x "$HOOKS_DIR/angular/pre-commit" "$HOOKS_DIR/angular/pre-push" "$HOOKS_DIR/angular/verify" 2>/dev/null
         printf "  ${C_OK}[OK]${C_RESET}  %-40s → %s\n" "$repo_name" "$HOOKS_DIR"
         ((success_count++))
     else
