@@ -1,0 +1,13 @@
+id: no-debugger
+message: "Remova a declaracao debugger antes de commitar."
+severity: error
+language: typescript
+rule:
+  pattern: debugger
+---
+id: no-alert
+message: "Evite chamadas a alert() em codigo corporativo."
+severity: error
+language: typescript
+rule:
+  pattern: alert($$$ARGS)

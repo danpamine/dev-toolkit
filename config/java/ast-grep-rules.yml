@@ -1,0 +1,13 @@
+id: no-system-out
+message: "Evite System.out.println em codigo corporativo. Utilize um logger configurado."
+severity: warning
+language: java
+rule:
+  pattern: System.out.println($$$ARGS)
+---
+id: no-print-stack-trace
+message: "Evite printStackTrace(). Trate a excecao ou registre no logger."
+severity: warning
+language: java
+rule:
+  pattern: $E.printStackTrace()
