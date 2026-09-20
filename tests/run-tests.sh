@@ -143,11 +143,23 @@ test_async_failures() {
 
     local has_f1=0 has_f2=0
     grep -q "Erro critico 1" "$log_out" && has_f1=1
-    grep -q "Erro critico 2" "$log_out" && has_f2=1
+    grep -q "Erro critico 2" "$log_out" && has_f1=1
     rm -f "$log_out"
 
     assert "1" "$has_f1" "Log da falha 1 deve constar no relatório final"
     assert "1" "$has_f2" "Log da falha 2 deve constar no relatório final sem sobreposição"
+}
+
+test_spotbugs_incremental() {
+    printf "\n--- Teste 6: SpotBugs Incremental (Ignora quando sem alterações Java) ---\n"
+    source "$TOOLKIT_ROOT/lib/common/logging.sh"
+    source "$TOOLKIT_ROOT/lib/common/summary.sh"
+    source "$TOOLKIT_ROOT/lib/common/git-diff.sh"
+    source "$TOOLKIT_ROOT/lib/java/spotbugs.sh"
+
+    echo '<project></project>' > pom.xml
+    step_spotbugs "STEP" "SpotBugs" >/dev/null 2>&1
+    assert "0" "$?" "SpotBugs deve concluir com sucesso em 0s quando não houver arquivos Java alterados"
 }
 
 setup
@@ -156,6 +168,7 @@ test_toggles
 test_angular_test_resolution
 test_version_increments
 test_async_failures
+test_spotbugs_incremental
 teardown
 
 printf "\n==================================================\n"

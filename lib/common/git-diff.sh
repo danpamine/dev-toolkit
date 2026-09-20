@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# git-diff.sh - Resolução Determinística da Branch Base Remota e Diffs
+# git-diff.sh - Resolução Determinística da Branch Base e Diffs
 # ==============================================================================
 
 git_diff_resolve_base_ref() {
@@ -11,7 +11,14 @@ git_diff_resolve_base_ref() {
     if [[ -n "${BASE_BRANCH:-}" ]]; then
         candidates+=("origin/$BASE_BRANCH" "$BASE_BRANCH")
     fi
-    candidates+=("origin/develop" "develop" "origin/develop" "develop" "origin/main" "main" "origin/master" "master")
+
+    local created_from
+    created_from="$(git reflog show --format="%gs" "$current_branch" 2>/dev/null | grep -oE "Created from .*" | head -1 | sed 's/Created from //' | tr -d '\r\n ')"
+    if [[ -n "$created_from" && "$created_from" != "$current_branch" && "$created_from" != "HEAD" ]]; then
+        candidates+=("origin/$created_from" "$created_from")
+    fi
+
+    candidates+=("origin/develop" "develop" "origin/main" "main" "origin/master" "master")
 
     local cand
     for cand in "${candidates[@]}"; do
@@ -61,6 +68,14 @@ git_diff_branch_files() {
     if [[ -z "$parent_sha" ]]; then
         return 0
     fi
+
+    # Curto-circuito: se a branch tem 0 commits à frente da base e a working tree está limpa, não há alterações
+    local branch_commits
+    branch_commits="$(git rev-list --count "${parent_sha}..HEAD" 2>/dev/null || echo 0)"
+    if [[ "$branch_commits" -eq 0 ]] && git diff --quiet 2>/dev/null && git diff --cached --quiet 2>/dev/null; then
+        return 0
+    fi
+
     if [[ $# -gt 0 ]]; then
         git diff --name-only --diff-filter=ACMR "${parent_sha}" -- "$@" 2>/dev/null
     else
