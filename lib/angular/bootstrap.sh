@@ -22,6 +22,9 @@ bootstrap_angular() {
         unset NPM_CONFIG_GLOBALCONFIG
         export pnpm_config_userconfig="$npmrc_path"
         export pnpm_config_store_dir="$store_path"
+        export pnpm_config_node_linker="hoisted"
+        export pnpm_config_package_import_method="hardlink"
+        export pnpm_config_lockfile="true"
     fi
 
     return 0

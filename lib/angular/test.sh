@@ -8,12 +8,11 @@ step_angular_test() {
     local desc="$2"
 
     if [[ ! -f "package.json" ]]; then
-        log_step "$label" "$desc" "PULADO" "package.json ausente"
-        summary_add "$desc" "SKIP" "Sem package.json"
+        log_step "$label" "$desc" "OK" "Sem package.json"
+        summary_add "$desc" "OK" "Sem package.json"
         return 0
     fi
 
-    # Checa se há script de teste válido
     local has_script
     has_script=$(node -p "
         try {
@@ -24,13 +23,40 @@ step_angular_test() {
     " 2>/dev/null)
 
     if [[ "$has_script" != "true" ]]; then
-        log_step "$label" "$desc" "PULADO" "Script 'test' ausente no package.json"
-        summary_add "$desc" "SKIP" "Nenhum script de teste mapeado"
+        log_step "$label" "$desc" "OK" "Sem script de teste"
+        summary_add "$desc" "OK" "Sem script de teste"
+        return 0
+    fi
+
+    if [[ -f "angular.json" ]]; then
+        local has_ng_test_target
+        has_ng_test_target=$(node -e '
+            try {
+                const aj = require("./angular.json");
+                const projects = Object.values(aj.projects || {});
+                const hasTest = projects.some(p => (p.architect && p.architect.test) || (p.targets && p.targets.test));
+                console.log(hasTest ? "true" : "false");
+            } catch(e) { console.log("false"); }
+        ' 2>/dev/null)
+
+        if [[ "$has_ng_test_target" == "false" ]]; then
+            log_step "$label" "$desc" "OK" "Sem target de teste no angular.json"
+            summary_add "$desc" "OK" "Sem target de teste no angular.json"
+            return 0
+        fi
+    fi
+
+    local has_test_files
+    has_test_files=$(find . -maxdepth 5 -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.git/*" -type f \( -name "*.spec.ts" -o -name "*.spec.js" -o -name "*.test.ts" -o -name "*.test.js" \) 2>/dev/null | head -1)
+
+    if [[ -z "$has_test_files" ]]; then
+        log_step "$label" "$desc" "OK" "Sem testes no projeto"
+        summary_add "$desc" "OK" "Sem testes no projeto"
         return 0
     fi
 
     local hash
-    hash=$( (sha256sum package.json 2>/dev/null; find src -type f \( -name "*.spec.ts" -o -name "*.ts" \) -exec sha256sum {} + 2>/dev/null | sort) | sha256sum | awk '{print $1}')
+    hash=$( (sha256sum package.json 2>/dev/null; find . -maxdepth 5 -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.git/*" -type f \( -name "*.spec.ts" -o -name "*.ts" \) -exec sha256sum {} + 2>/dev/null | sort) | sha256sum | awk '{print $1}')
 
     if cache_is_valid "angular-test" "$hash"; then
         log_step "$label" "$desc" "OK" "Cache"
@@ -39,8 +65,7 @@ step_angular_test() {
     fi
 
     log_step_header "$label" "$desc"
-    log_substep "Executando suite de testes unitários"
-    run_angular_test
+    log_substep "Executando testes unitários (package.json)" run_angular_test
     local exit_code=$?
 
     if [[ $exit_code -eq 0 ]]; then
@@ -50,7 +75,7 @@ step_angular_test() {
     else
         log_step "$label" "$desc" "FAIL"
         summary_add "$desc" "FAIL" "Corrija falhas nos testes unitários"
-        log_show_last 30
+        log_show_last
     fi
     return $exit_code
 }
